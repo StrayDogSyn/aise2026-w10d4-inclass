@@ -1,0 +1,92 @@
+# ArgoCD Application Configuration for Model Serving
+# This Application manifest defines how ArgoCD should sync Kubernetes manifests
+# from a Git repository to the cluster for continuous deployment
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  # Application name - used to identify and manage this ArgoCD application
+  name: model-serving-prod
+  # Deploy the Application resource itself into the argocd namespace
+  namespace: argocd
+  # Finalizers ensure proper cleanup when the application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project name - 'default' is the standard project for simple deployments
+  # For production, consider creating a dedicated project with RBAC policies
+  project: default
+  
+  # Source configuration - defines WHERE to get the Kubernetes manifests
+  source:
+    # Git repository URL containing your Kubernetes manifests
+    # IMPORTANT: Replace this with your forked repository URL
+    # Example: https://github.com/YOUR_USERNAME/aise-model-serving-starter
+    repoURL: https://github.com/YOUR_USERNAME/FORKED_REPO_NAME.git
+    
+    # Git branch or tag to track
+    # Use 'main' or 'master' depending on your repository's default branch
+    targetRevision: main
+    
+    # Path within the repository where manifests are located
+    # This should point to the directory containing your deployment YAML files
+    path: k8s/overlays/prod
+    
+  # Destination configuration - defines WHERE to deploy the manifests
+  destination:
+    # Kubernetes cluster server URL
+    # 'https://kubernetes.default.svc' refers to the in-cluster API server
+    server: https://kubernetes.default.svc
+    
+    # Target namespace where resources will be created
+    # ArgoCD will create this namespace if it doesn't exist (with createNamespace enabled)
+    namespace: model-serving
+  
+  # Sync policy - defines HOW ArgoCD should sync changes
+  syncPolicy:
+    # Automated sync configuration
+    # Enables GitOps: changes in Git automatically trigger deployments
+    automated:
+      # Prune resources - delete resources from cluster if removed from Git
+      # This ensures cluster state matches Git exactly
+      prune: true
+      
+      # Self-heal - revert manual changes to match Git
+      # If someone runs 'kubectl edit', ArgoCD will restore the Git version
+      # Critical for maintaining GitOps principles and preventing drift
+      selfHeal: true
+      
+      # Allow empty - permit syncing even if no resources are found
+      allowEmpty: false
+    
+    # Sync options for additional control
+    syncOptions:
+      # Create namespace if it doesn't exist
+      - CreateNamespace=true
+      
+      # Validate resources against Kubernetes API before applying
+      # Catches errors before deployment
+      - Validate=true
+      
+      # Prune last - delete resources after new ones are created
+      # Helps prevent downtime during updates
+      - PruneLast=true
+    
+    # Retry configuration for handling transient failures
+    retry:
+      # Maximum number of retry attempts
+      limit: 5
+      
+      # Backoff strategy for retries
+      backoff:
+        duration: 5s      # Initial retry delay
+        factor: 2         # Multiply delay by this factor each retry
+        maxDuration: 3m   # Maximum delay between retries
+  
+  # Ignore differences - prevent drift detection for certain fields
+  # Useful for fields that get modified by controllers or admission webhooks
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Uncomment if using HPA (Horizontal Pod Autoscaler)
